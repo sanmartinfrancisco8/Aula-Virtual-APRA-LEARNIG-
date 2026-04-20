@@ -2,6 +2,8 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { prisma } from './src/lib/prisma';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
 const PORT = process.env.PORT || 3000;
 
@@ -42,6 +44,8 @@ async function startServer() {
 
   app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
+    console.log(`[AUTH] Login attempt for email: ${email}`);
+    
     try {
       const user = await prisma.user.findUnique({
         where: { email },
@@ -53,15 +57,15 @@ async function startServer() {
       });
 
       if (!user) {
+        console.log(`[AUTH] User not found: ${email}`);
         return res.status(401).json({ error: 'Credenciales inválidas.' });
       }
       
-      const jwt = await import('jsonwebtoken');
-      const bcrypt = await import('bcryptjs');
+      console.log(`[AUTH] User found. Password hash exists: ${!!user.passwordHash}`);
 
-      // bcryptjs exports as default in some ESM contexts, fallback to default if compareSync is undefined
-      const compareSync = bcrypt.compareSync || bcrypt.default.compareSync;
-      const isMatch = compareSync(password, user.passwordHash);
+      const isMatch = bcrypt.compareSync(password, user.passwordHash);
+      console.log(`[AUTH] Password match result: ${isMatch}`);
+      
       if (!isMatch) {
          return res.status(401).json({ error: 'Credenciales inválidas.' });
       }
@@ -75,6 +79,7 @@ async function startServer() {
         { expiresIn: '8h' }
       );
 
+      console.log(`[AUTH] Login successful for: ${email}`);
       res.json({
         token,
         user: {
@@ -86,7 +91,7 @@ async function startServer() {
         }
       });
     } catch (e) {
-      console.error(e);
+      console.error("[AUTH ERROR]", e);
       res.status(500).json({ error: 'Error del servidor' });
     }
   });
