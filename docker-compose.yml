@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------
+  # PostgreSQL - Primary Relational Database
+  # ---------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: apra_lms_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_password}
+      POSTGRES_DB: ${POSTGRES_DB:-apra_lms}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ---------------------------------------------------------
+  # Redis - Caching, Sessions, and Task Queues (BullMQ)
+  # ---------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: apra_lms_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  # ---------------------------------------------------------
+  # MinIO - S3-Compatible Object Storage for Files
+  # ---------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: apra_lms_minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-admin1234}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  redis_data:
+  minio_data:

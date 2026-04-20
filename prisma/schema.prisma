@@ -1,0 +1,284 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// USER & RBAC
+// -----------------------------------------------------------------------------
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  avatarUrl     String?
+  isActive      Boolean   @default(true)
+  isVerified    Boolean   @default(false)
+  lastLogin     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  roles         UserRole[]
+  enrollments   Enrollment[]
+  teaching      Course[]         @relation("CourseTeachers")
+  submissions   AssignmentSubmission[]
+  comments      SubmissionComment[]
+  auditLogs     AuditLog[]
+  uploadedFiles File[]
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique // e.g., SUPER_ADMIN, INSTITUTION_ADMIN, TEACHER, STUDENT
+  description String?
+  permissions RolePermission[]
+  users       UserRole[]
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  action      String   // e.g., create:courses, read:grades
+  description String?
+  roles       RolePermission[]
+}
+
+model UserRole {
+  userId  String
+  roleId  String
+  user    User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role    Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  @@id([userId, roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  @@id([roleId, permissionId])
+}
+
+// -----------------------------------------------------------------------------
+// INSTITUTION & ACADEMIC STRUCTURE
+// -----------------------------------------------------------------------------
+model Institution {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  logoUrl   String?
+  theme     String?    // Optional custom branding per institution (Store as JSON string)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  programs  Program[]
+}
+
+model Program {
+  id            String      @id @default(uuid())
+  institutionId String
+  name          String
+  description   String?
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  courses       Course[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model Course {
+  id          String   @id @default(uuid())
+  programId   String
+  code        String   @unique
+  title       String
+  description String?
+  coverUrl    String?
+  isPublished Boolean  @default(false)
+  
+  program     Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  teachers    User[]   @relation("CourseTeachers")
+  sections    CourseSection[]
+  modules     Module[]
+  folders     Folder[] // Root folders for course files
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CourseSection {
+  id          String   @id @default(uuid())
+  courseId    String
+  name        String   // e.g., "Fall 2026 - Group A"
+  startDate   DateTime?
+  endDate     DateTime?
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  enrollments Enrollment[]
+}
+
+model Enrollment {
+  id              String        @id @default(uuid())
+  userId          String
+  courseSectionId String
+  status          String        @default("ACTIVE") // ACTIVE, SUSPENDED, COMPLETED
+  enrolledAt      DateTime      @default(now())
+  
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseSection   CourseSection @relation(fields: [courseSectionId], references: [id], onDelete: Cascade)
+  grades          GradeRecord[]
+  
+  @@unique([userId, courseSectionId])
+}
+
+// -----------------------------------------------------------------------------
+// COURSE CONTENT
+// -----------------------------------------------------------------------------
+model Module {
+  id          String   @id @default(uuid())
+  courseId    String
+  title       String
+  description String?
+  order       Int
+  isPublished Boolean  @default(false)
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons     Lesson[]
+  assignments Assignment[]
+  quizzes     Quiz[]
+}
+
+model Lesson {
+  id          String   @id @default(uuid())
+  moduleId    String
+  title       String
+  content     String?  // Rich text or markdown
+  contentType String   @default("TEXT") // TEXT, VIDEO, PDF, SCORM
+  order       Int
+  module      Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  resources   Resource[]
+}
+
+// -----------------------------------------------------------------------------
+// FILE SYSTEM (S3/MINIO ABSTRACTION)
+// -----------------------------------------------------------------------------
+model Folder {
+  id          String   @id @default(uuid())
+  name        String
+  parentId    String?
+  courseId    String?
+  parent      Folder?  @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Folder[] @relation("FolderHierarchy")
+  course      Course?  @relation(fields: [courseId], references: [id])
+  files       File[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model File {
+  id          String   @id @default(uuid())
+  folderId    String?
+  uploaderId  String
+  name        String
+  originalName String
+  mimeType    String
+  sizeBytes   BigInt
+  storageKey  String   // S3/MinIO Key
+  status      String   @default("UPLOADED") // UPLOADED, PROCESSING, READY, FAILED
+  hash        String?  // MD5 or SHA256
+  isPublic    Boolean  @default(false)
+
+  folder      Folder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  uploader    User     @relation(fields: [uploaderId], references: [id])
+  resources   Resource[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Resource {
+  id          String   @id @default(uuid())
+  lessonId    String
+  fileId      String
+  title       String
+  lesson      Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  file        File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+}
+
+// -----------------------------------------------------------------------------
+// ASSIGNMENTS & GRADING
+// -----------------------------------------------------------------------------
+model Assignment {
+  id          String   @id @default(uuid())
+  moduleId    String
+  title       String
+  description String   
+  dueDate     DateTime?
+  maxPoints   Float
+  module      Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  submissions AssignmentSubmission[]
+}
+
+model AssignmentSubmission {
+  id           String   @id @default(uuid())
+  assignmentId String
+  studentId    String
+  content      String?  // Optional text submission
+  submittedAt  DateTime @default(now())
+  grade        Float?
+  status       String   @default("SUBMITTED") // SUBMITTED, LATE, GRADED, RETURNED
+  
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student      User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  comments     SubmissionComment[]
+  
+  @@unique([assignmentId, studentId])
+}
+
+model SubmissionComment {
+  id           String               @id @default(uuid())
+  submissionId String
+  authorId     String
+  content      String               
+  createdAt    DateTime             @default(now())
+  
+  submission   AssignmentSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  author       User                 @relation(fields: [authorId], references: [id], onDelete: Cascade)
+}
+
+model Quiz {
+  id          String   @id @default(uuid())
+  moduleId    String
+  title       String
+  timeLimitMb Int?     // Time limit in minutes
+  module      Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+}
+
+model GradeRecord {
+  id           String   @id @default(uuid())
+  enrollmentId String
+  itemId       String   // Abstract referenced ID (Assignment, Quiz)
+  itemType     String   // "ASSIGNMENT", "QUIZ", "MANUAL"
+  score        Float
+  maxScore     Float
+  gradedAt     DateTime @default(now())
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+}
+
+// -----------------------------------------------------------------------------
+// AUDIT & LOGGING
+// -----------------------------------------------------------------------------
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  action      String   // e.g., FILE_DOWNLOAD, COURSE_DELETED
+  resourceType String
+  resourceId  String?
+  details     String? // JSON string payload
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
