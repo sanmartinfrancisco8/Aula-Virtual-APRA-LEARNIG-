@@ -77,7 +77,7 @@ export function Courses() {
   );
 }
 
-function CourseCard({ title, students, hours, isStudent = false }: { title: string, students: number, hours: number, isStudent?: boolean }) {
+function CourseCard({ title, students, hours, isStudent = false }: { title: string, students: number, hours: number, isStudent?: boolean, key?: string | number }) {
   return (
     <div className="bg-black/20 border border-white/5 hover:border-emerald-500/30 hover:bg-black/40 transition-all rounded-xl p-5 group cursor-pointer">
       <div className="w-12 h-12 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shadow-[0_0_10px_rgba(96,165,250,0.1)] group-hover:bg-blue-500 group-hover:text-white transition-all mb-4">

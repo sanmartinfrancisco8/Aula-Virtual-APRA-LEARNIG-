@@ -96,7 +96,7 @@ export function Files() {
   );
 }
 
-function FolderCard({ name, items }: { name: string, items: number }) {
+function FolderCard({ name, items }: { name: string, items: number, key?: string | number }) {
   return (
     <div className="bg-black/20 border border-white/5 hover:border-blue-500/30 hover:bg-black/40 transition-all rounded-xl p-5 group cursor-pointer flex flex-col items-center text-center">
       <Folder size={40} className="text-blue-500/70 group-hover:text-blue-400 transition-colors mb-4" fill="currentColor" strokeWidth={1} />
