@@ -2,7 +2,7 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import express from 'express';
 // Import the routes from the isolated API module
-import apiApp from './api/index';
+import apiApp from './api/index.js';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
